@@ -10,6 +10,8 @@ use hdf5_sys::h5a::{H5Aget_space, H5Aget_storage_size, H5Aget_type, H5Aread, H5A
 use hdf5_sys::h5d::{H5Dget_space, H5Dget_storage_size, H5Dget_type, H5Dread, H5Dwrite};
 use hdf5_sys::h5p::H5Pcreate;
 
+use crate::hl::plist::dataset_transfer::DatasetTransfer;
+use crate::hl::selection::RawSelection;
 use crate::internal_prelude::*;
 
 /// A type for reading data from a [`Container`].
@@ -17,6 +19,7 @@ use crate::internal_prelude::*;
 pub struct Reader<'a> {
     obj: &'a Container,
     conv: Conversion,
+    xfer: Option<DatasetTransfer>,
 }
 
 impl<'a> Reader<'a> {
@@ -24,7 +27,16 @@ impl<'a> Reader<'a> {
     ///
     /// Any conversions (including hard/soft) are allowed by default.
     pub fn new(obj: &'a Container) -> Self {
-        Self { obj, conv: Conversion::Soft }
+        Self { obj, conv: Conversion::Soft, xfer: None }
+    }
+
+    /// Read datasets with the given transfer properties, e.g. a collective MPI-IO transfer.
+    ///
+    /// With a transfer property list set, a read of an empty selection still calls into HDF5
+    /// (selecting nothing), since a collective transfer needs every rank to take part.
+    pub fn transfer(mut self, plist: &DatasetTransfer) -> Self {
+        self.xfer = Some(plist.clone());
+        self
     }
 
     /// Set maximum allowed conversion level.
@@ -52,8 +64,13 @@ impl<'a> Reader<'a> {
         } else {
             let fspace_id = fspace.map_or(H5S_ALL, |f| f.id());
             let mspace_id = mspace.map_or(H5S_ALL, |m| m.id());
-            let xfer =
-                PropertyList::from_id(h5call!(H5Pcreate(*crate::globals::H5P_DATASET_XFER))?)?;
+            // copied rather than modified, so the caller's property list is left as it was
+            let xfer = match &self.xfer {
+                Some(plist) => plist.deref().copy(),
+                None => {
+                    PropertyList::from_id(h5call!(H5Pcreate(*crate::globals::H5P_DATASET_XFER))?)?
+                }
+            };
             if !hdf5_types::USING_H5_ALLOCATOR {
                 crate::hl::plist::set_vlen_manager_libc(xfer.id())?;
             }
@@ -97,6 +114,13 @@ impl<'a> Reader<'a> {
         }
 
         if out_size == 0 {
+            // a collective transfer needs every rank to take part, one reading nothing included
+            if self.xfer.is_some() {
+                let fspace = obj_space.select_raw(RawSelection::None)?;
+                let mspace = Dataspace::try_new(&out_shape)?.select_raw(RawSelection::None)?;
+                let mut buf: Vec<T> = Vec::new();
+                self.read_into_buf(buf.as_mut_ptr(), Some(&fspace), Some(&mspace))?;
+            }
             Ok(unsafe { Array::from_shape_vec_unchecked(out_shape, vec![]).into_dimensionality()? })
         } else if obj_space.ndim() == 0 {
             self.read()
@@ -209,6 +233,7 @@ impl<'a> Reader<'a> {
 pub struct Writer<'a> {
     obj: &'a Container,
     conv: Conversion,
+    xfer: Option<DatasetTransfer>,
 }
 
 impl<'a> Writer<'a> {
@@ -216,7 +241,18 @@ impl<'a> Writer<'a> {
     ///
     /// Any conversions (including hard/soft) are allowed by default.
     pub fn new(obj: &'a Container) -> Self {
-        Self { obj, conv: Conversion::Soft }
+        Self { obj, conv: Conversion::Soft, xfer: None }
+    }
+
+    /// Write datasets with the given transfer properties, e.g. a collective MPI-IO transfer --
+    /// which parallel HDF5 requires for writing a filtered (e.g. compressed) dataset from more
+    /// than one rank.
+    ///
+    /// With a transfer property list set, a write of an empty selection still calls into HDF5
+    /// (selecting nothing), since a collective transfer needs every rank to take part.
+    pub fn transfer(mut self, plist: &DatasetTransfer) -> Self {
+        self.xfer = Some(plist.clone());
+        self
     }
 
     /// Set maximum allowed conversion level.
@@ -244,7 +280,8 @@ impl<'a> Writer<'a> {
         } else {
             let fspace_id = fspace.map_or(H5S_ALL, |f| f.id());
             let mspace_id = mspace.map_or(H5S_ALL, |m| m.id());
-            h5try!(H5Dwrite(obj_id, tp_id, mspace_id, fspace_id, H5P_DEFAULT, buf.cast()));
+            let xfer_id = self.xfer.as_ref().map_or(H5P_DEFAULT, |plist| plist.id());
+            h5try!(H5Dwrite(obj_id, tp_id, mspace_id, fspace_id, xfer_id, buf.cast()));
         }
         Ok(())
     }
@@ -292,6 +329,12 @@ impl<'a> Writer<'a> {
         }
 
         if out_size == 0 {
+            // a collective transfer needs every rank to take part, one writing nothing included
+            if self.xfer.is_some() {
+                let fspace = obj_space.select_raw(RawSelection::None)?;
+                let mspace = Dataspace::try_new(view.shape())?.select_raw(RawSelection::None)?;
+                self.write_from_buf(view.as_ptr(), Some(&fspace), Some(&mspace))?;
+            }
             Ok(())
         } else if obj_space.ndim() == 0 {
             self.write(view)

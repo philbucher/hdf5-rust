@@ -762,6 +762,50 @@ fn test_gcpl_link_creation_order() -> hdf5::Result<()> {
     Ok(())
 }
 
+type DX = DatasetTransfer;
+type DXB = DatasetTransferBuilder;
+
+#[test]
+fn test_dxpl_default() -> hdf5::Result<()> {
+    let pl = DX::try_new()?;
+    assert_eq!(pl.class()?, PropertyListClass::DataTransfer);
+    assert_eq!(DXB::from_plist(&pl)?.finish()?, pl);
+    assert_eq!(pl.copy(), pl);
+    Ok(())
+}
+
+#[test]
+#[cfg(feature = "mpio")]
+fn test_dxpl_common() -> hdf5::Result<()> {
+    // `test_pl_common!` without its `Debug` check, which expects the type to be named after its
+    // class: this one is `DatasetTransfer`, its class `DataTransfer`
+    let pl_default = DX::try_new()?;
+    let pl = DX::build().mpio(MpioTransferMode::Collective).finish()?;
+    assert_eq!(pl.class()?, PropertyListClass::DataTransfer);
+    assert_eq!(pl, pl);
+    assert_ne!(pl, pl_default);
+    assert!(format!("{:?}", pl).starts_with("DatasetTransfer"));
+
+    let pl2 = pl.copy();
+    assert_eq!(pl2.class()?, PropertyListClass::DataTransfer);
+    assert_eq!(pl2, pl);
+    assert_ne!(pl2, pl_default);
+    Ok(())
+}
+
+#[test]
+#[cfg(feature = "mpio")]
+fn test_dxpl_set_mpio() -> hdf5::Result<()> {
+    assert_eq!(DX::try_new()?.mpio(), MpioTransferMode::Independent);
+    let mut b = DX::build();
+    b.mpio(MpioTransferMode::Collective);
+    assert_eq!(b.finish()?.get_mpio()?, MpioTransferMode::Collective);
+    assert_eq!(DXB::from_plist(&b.finish()?)?.finish()?.mpio(), MpioTransferMode::Collective);
+    b.mpio(MpioTransferMode::Independent);
+    assert_eq!(b.finish()?.mpio(), MpioTransferMode::Independent);
+    Ok(())
+}
+
 type DC = DatasetCreate;
 type DCB = DatasetCreateBuilder;
 

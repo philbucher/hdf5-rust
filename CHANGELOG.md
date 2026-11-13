@@ -1,6 +1,8 @@
 # Changelog
 
 ## hdf5 unreleased
+- Added `DatasetTransfer` and `DatasetTransferBuilder` (the dataset transfer property list), with `MpioTransferMode` to choose an independent or collective MPI-IO transfer (`mpio` feature)
+- Added `Reader::transfer` and `Writer::transfer` to read and write datasets with a given transfer property list; with one set, a read or write of an empty selection still takes part in a collective transfer instead of returning early
 - Fixed external dataset storage when HDF5 uses a different file-offset width from Rust's libc
 - Recognized HDF5 1.10.11 and 1.12.3 version features
 - Added `Datatype::opaque` to construct an opaque datatype with a specified size

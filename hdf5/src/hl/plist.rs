@@ -15,6 +15,7 @@ pub mod attribute_create;
 pub mod common;
 pub mod dataset_access;
 pub mod dataset_create;
+pub mod dataset_transfer;
 pub mod file_access;
 pub mod file_create;
 pub mod group_create;

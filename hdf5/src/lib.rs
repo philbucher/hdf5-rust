@@ -97,6 +97,7 @@ mod export {
         pub use crate::hl::dataset::{Chunk, Dataset, DatasetBuilder};
         pub use crate::hl::plist::dataset_access::*;
         pub use crate::hl::plist::dataset_create::*;
+        pub use crate::hl::plist::dataset_transfer::*;
     }
 
     /// Datatype objects for defining the layout of a data element.
@@ -123,6 +124,7 @@ mod export {
         };
         pub use crate::hl::plist::dataset_access::{DatasetAccess, DatasetAccessBuilder};
         pub use crate::hl::plist::dataset_create::{DatasetCreate, DatasetCreateBuilder};
+        pub use crate::hl::plist::dataset_transfer::{DatasetTransfer, DatasetTransferBuilder};
         pub use crate::hl::plist::file_access::{FileAccess, FileAccessBuilder};
         pub use crate::hl::plist::file_create::{FileCreate, FileCreateBuilder};
         pub use crate::hl::plist::group_create::{GroupCreate, GroupCreateBuilder};
@@ -141,6 +143,10 @@ mod export {
         /// Dataset creation property lists.
         pub mod dataset_create {
             pub use crate::hl::plist::dataset_create::*;
+        }
+        /// Dataset transfer property lists.
+        pub mod dataset_transfer {
+            pub use crate::hl::plist::dataset_transfer::*;
         }
         /// File access property lists.
         pub mod file_access {
